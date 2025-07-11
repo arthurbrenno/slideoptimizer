@@ -59,7 +59,6 @@ def check_poppler():
             return False
 
 # Função para converter páginas PDF em imagens
-@st.cache_data
 def pdf_to_images(pdf_path, dpi=150):
     """Converte todas as páginas de um PDF em imagens."""
     try:
@@ -71,50 +70,65 @@ def pdf_to_images(pdf_path, dpi=150):
 
 # Função para criar o PDF otimizado com 4 slides por página
 def create_optimized_pdf(selected_images, output_path):
-    """Cria um PDF com 4 slides por página em orientação horizontal."""
+    """Cria um PDF com 4 slides por página em orientação horizontal (grid 2x2)."""
     # Dimensões da página A4 em landscape
     page_width, page_height = landscape(A4)
     
     # Margens
-    margin = 20
+    margin = 30
+    spacing = 20  # Espaço entre slides
     
     # Calcula as dimensões de cada slide na página
-    slide_width = (page_width - 3 * margin) / 2
-    slide_height = (page_height - 3 * margin) / 2
+    # Largura: (largura_total - 2*margem - 1*espaçamento) / 2
+    slide_width = (page_width - 2*margin - spacing) / 2
+    # Altura: (altura_total - 2*margem - 1*espaçamento) / 2
+    slide_height = (page_height - 2*margin - spacing) / 2
     
     # Cria o canvas do PDF
     c = canvas.Canvas(output_path, pagesize=landscape(A4))
     
     # Processa as imagens selecionadas em grupos de 4
-    for i in range(0, len(selected_images), 4):
-        # Posições dos 4 slides na página
-        positions = [
-            (margin, page_height - margin - slide_height),  # Superior esquerdo
-            (margin + slide_width + margin, page_height - margin - slide_height),  # Superior direito
-            (margin, margin + slide_height),  # Inferior esquerdo
-            (margin + slide_width + margin, margin + slide_height)  # Inferior direito
-        ]
+    for page_idx in range(0, len(selected_images), 4):
+        # Define as posições dos 4 slides (origem no canto inferior esquerdo)
+        # Grid 2x2: [0,1] na linha superior, [2,3] na linha inferior
+        positions = []
+        
+        # Linha superior (y mais alto)
+        y_top = margin + slide_height + spacing
+        # Slide superior esquerdo (posição 0)
+        positions.append((margin, y_top))
+        # Slide superior direito (posição 1)
+        positions.append((margin + slide_width + spacing, y_top))
+        
+        # Linha inferior (y mais baixo)
+        y_bottom = margin
+        # Slide inferior esquerdo (posição 2)
+        positions.append((margin, y_bottom))
+        # Slide inferior direito (posição 3)
+        positions.append((margin + slide_width + spacing, y_bottom))
         
         # Adiciona até 4 slides na página atual
         for j in range(4):
-            if i + j < len(selected_images):
-                img = selected_images[i + j]
+            if page_idx + j < len(selected_images):
+                img = selected_images[page_idx + j]
                 
                 # Converte PIL Image para formato compatível com reportlab
                 img_buffer = io.BytesIO()
-                img.save(img_buffer, format='PNG')
+                # Salva com qualidade alta
+                img.save(img_buffer, format='PNG', optimize=True)
                 img_buffer.seek(0)
                 
                 # Calcula o tamanho para manter a proporção
                 img_width, img_height = img.size
                 aspect_ratio = img_width / img_height
                 
+                # Ajusta dimensões mantendo proporção
                 if aspect_ratio > slide_width / slide_height:
-                    # Imagem é mais larga
+                    # Imagem é mais larga que o espaço
                     draw_width = slide_width
                     draw_height = slide_width / aspect_ratio
                 else:
-                    # Imagem é mais alta
+                    # Imagem é mais alta que o espaço
                     draw_height = slide_height
                     draw_width = slide_height * aspect_ratio
                 
@@ -122,24 +136,36 @@ def create_optimized_pdf(selected_images, output_path):
                 x_offset = (slide_width - draw_width) / 2
                 y_offset = (slide_height - draw_height) / 2
                 
-                x, y = positions[j]
+                # Pega a posição base
+                x_base, y_base = positions[j]
+                
+                # Calcula posição final centralizada
+                x_final = x_base + x_offset
+                y_final = y_base + y_offset
+                
+                # Desenha uma borda fina ao redor do slide (opcional)
+                c.setStrokeColorRGB(0.8, 0.8, 0.8)
+                c.setLineWidth(0.5)
+                c.rect(x_base, y_base, slide_width, slide_height)
                 
                 # Desenha a imagem
                 c.drawImage(
                     ImageReader(img_buffer),
-                    x + x_offset,
-                    y - y_offset,
+                    x_final,
+                    y_final,
                     width=draw_width,
                     height=draw_height,
-                    preserveAspectRatio=True
+                    preserveAspectRatio=True,
+                    mask='auto'
                 )
                 
-                # Adiciona número da página original (opcional)
-                c.setFont("Helvetica", 8)
-                c.drawString(x + 5, y - slide_height + 5, f"Slide {i + j + 1}")
+                # Adiciona número do slide no canto inferior esquerdo
+                c.setFont("Helvetica", 10)
+                c.setFillColorRGB(0.3, 0.3, 0.3)
+                c.drawString(x_base + 5, y_base + 5, f"Slide {page_idx + j + 1}")
         
         # Nova página se houver mais slides
-        if i + 4 < len(selected_images):
+        if page_idx + 4 < len(selected_images):
             c.showPage()
     
     # Salva o PDF
@@ -150,7 +176,9 @@ def main():
     st.title("📄 Otimizador de Slides PDF")
     st.markdown("""
     Este aplicativo permite otimizar a impressão de slides de apresentações em PDF,
-    organizando **4 slides por página** em orientação horizontal para economizar papel.
+    organizando **4 slides por página** em orientação horizontal (layout 2x2) para economizar papel.
+    
+    **Layout final:** 2 slides na linha superior + 2 slides na linha inferior = 4 slides por página A4
     """)
     
     # Verifica se o poppler está instalado
@@ -216,7 +244,7 @@ def main():
                                 img_resized.thumbnail((300, 300), Image.Resampling.LANCZOS)
                                 
                                 # Mostra a imagem
-                                st.image(img_resized, use_column_width=True)
+                                st.image(img_resized, use_container_width=True)
                                 
                                 # Checkbox para seleção
                                 is_selected = st.checkbox(
@@ -255,8 +283,9 @@ def main():
                             
                             st.success(f"""
                             ✅ PDF otimizado gerado com sucesso!
-                            - Páginas originais: {total_pages_original}
+                            - Páginas originais selecionadas: {total_pages_original}
                             - Páginas no PDF otimizado: {total_pages_optimized}
+                            - Slides por página: 4 (layout 2x2)
                             - Economia de papel: {((total_pages_original - total_pages_optimized) / total_pages_original * 100):.1f}%
                             """)
                             
@@ -291,12 +320,20 @@ def main():
         4. **Clique em "Gerar PDF Otimizado"** para criar o novo arquivo
         5. **Baixe o PDF** com 4 slides por página em orientação horizontal
         
+        **Layout do PDF otimizado:**
+        - Página em orientação paisagem (horizontal)
+        - Grid 2x2: 4 slides por página A4
+        - 2 slides na linha superior
+        - 2 slides na linha inferior
+        - Bordas finas para delimitar cada slide
+        - Numeração dos slides preservada
+        
         **Dicas:**
         - Use os botões de seleção rápida para marcar/desmarcar várias páginas
-        - O layout horizontal (2x2) é ideal para impressão e leitura
-        - Cada página do PDF final conterá até 4 slides originais
+        - O layout 2x2 horizontal é ideal para impressão e leitura
+        - Cada página do PDF final conterá exatamente 4 slides originais
+        - Economia de até 75% de papel comparado à impressão de 1 slide por página
         """)
 
 if __name__ == "__main__":
     main()
-    
