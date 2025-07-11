@@ -1,0 +1,19 @@
+[project]
+name = "projetonicole"
+version = "0.1.0"
+description = "Aplicativo Streamlit para otimizar impressão de slides PDF"
+readme = "README.md"
+requires-python = ">=3.13.1"
+dependencies = [
+    "streamlit>=1.46.1",
+    "pypdf>=4.2.0",
+    "Pillow>=10.3.0",
+    "pdf2image>=1.17.0",
+    "reportlab>=4.2.0"
+]
+
+[project.scripts]
+projetonicole = "main:main"
+
+[tool.setuptools]
+packages = ["."]
