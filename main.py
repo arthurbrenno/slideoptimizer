@@ -70,19 +70,25 @@ def pdf_to_images(pdf_path, dpi=150):
 
 # Função para criar o PDF otimizado com 4 slides por página
 def create_optimized_pdf(selected_images, output_path):
-    """Cria um PDF com 4 slides por página em orientação horizontal (grid 2x2)."""
+    """
+    Cria um PDF com 4 slides por página em orientação horizontal (grid 2x2).
+    Inclui margem de 3cm na esquerda para permitir furar o papel para fichário.
+    """
     # Dimensões da página A4 em landscape
     page_width, page_height = landscape(A4)
     
-    # Margens
-    margin = 30
+    # Margens (3cm na esquerda para furar, outras margens normais)
+    margin_left = 85  # 3cm para furar no fichário (1cm ≈ 28.35 pontos)
+    margin_right = 30
+    margin_top = 30
+    margin_bottom = 30
     spacing = 20  # Espaço entre slides
     
     # Calcula as dimensões de cada slide na página
-    # Largura: (largura_total - 2*margem - 1*espaçamento) / 2
-    slide_width = (page_width - 2*margin - spacing) / 2
-    # Altura: (altura_total - 2*margem - 1*espaçamento) / 2
-    slide_height = (page_height - 2*margin - spacing) / 2
+    # Largura: (largura_total - margem_esquerda - margem_direita - 1*espaçamento) / 2
+    slide_width = (page_width - margin_left - margin_right - spacing) / 2
+    # Altura: (altura_total - margem_superior - margem_inferior - 1*espaçamento) / 2
+    slide_height = (page_height - margin_top - margin_bottom - spacing) / 2
     
     # Cria o canvas do PDF
     c = canvas.Canvas(output_path, pagesize=landscape(A4))
@@ -94,18 +100,18 @@ def create_optimized_pdf(selected_images, output_path):
         positions = []
         
         # Linha superior (y mais alto)
-        y_top = margin + slide_height + spacing
+        y_top = margin_bottom + slide_height + spacing
         # Slide superior esquerdo (posição 0)
-        positions.append((margin, y_top))
+        positions.append((margin_left, y_top))
         # Slide superior direito (posição 1)
-        positions.append((margin + slide_width + spacing, y_top))
+        positions.append((margin_left + slide_width + spacing, y_top))
         
         # Linha inferior (y mais baixo)
-        y_bottom = margin
+        y_bottom = margin_bottom
         # Slide inferior esquerdo (posição 2)
-        positions.append((margin, y_bottom))
+        positions.append((margin_left, y_bottom))
         # Slide inferior direito (posição 3)
-        positions.append((margin + slide_width + spacing, y_bottom))
+        positions.append((margin_left + slide_width + spacing, y_bottom))
         
         # Adiciona até 4 slides na página atual
         for j in range(4):
@@ -143,12 +149,7 @@ def create_optimized_pdf(selected_images, output_path):
                 x_final = x_base + x_offset
                 y_final = y_base + y_offset
                 
-                # Desenha uma borda fina ao redor do slide (opcional)
-                c.setStrokeColorRGB(0.8, 0.8, 0.8)
-                c.setLineWidth(0.5)
-                c.rect(x_base, y_base, slide_width, slide_height)
-                
-                # Desenha a imagem
+                # Desenha a imagem (sem bordas ou texto)
                 c.drawImage(
                     ImageReader(img_buffer),
                     x_final,
@@ -158,11 +159,6 @@ def create_optimized_pdf(selected_images, output_path):
                     preserveAspectRatio=True,
                     mask='auto'
                 )
-                
-                # Adiciona número do slide no canto inferior esquerdo
-                c.setFont("Helvetica", 10)
-                c.setFillColorRGB(0.3, 0.3, 0.3)
-                c.drawString(x_base + 5, y_base + 5, f"Slide {page_idx + j + 1}")
         
         # Nova página se houver mais slides
         if page_idx + 4 < len(selected_images):
@@ -179,6 +175,8 @@ def main():
     organizando **4 slides por página** em orientação horizontal (layout 2x2) para economizar papel.
     
     **Layout final:** 2 slides na linha superior + 2 slides na linha inferior = 4 slides por página A4
+    
+    ✅ **Otimizado para fichário:** margem de 3cm na esquerda para furar o papel sem danificar o conteúdo
     """)
     
     # Verifica se o poppler está instalado
@@ -287,6 +285,7 @@ def main():
                             - Páginas no PDF otimizado: {total_pages_optimized}
                             - Slides por página: 4 (layout 2x2)
                             - Economia de papel: {((total_pages_original - total_pages_optimized) / total_pages_original * 100):.1f}%
+                            - Margem esquerda de 3cm para fichário incluída
                             """)
                             
                             # Botão de download
@@ -325,14 +324,15 @@ def main():
         - Grid 2x2: 4 slides por página A4
         - 2 slides na linha superior
         - 2 slides na linha inferior
-        - Bordas finas para delimitar cada slide
-        - Numeração dos slides preservada
+        - **Margem de 3cm na esquerda** para furar e colocar no fichário
+        - Layout limpo sem textos adicionais (economia de tinta)
         
         **Dicas:**
         - Use os botões de seleção rápida para marcar/desmarcar várias páginas
         - O layout 2x2 horizontal é ideal para impressão e leitura
         - Cada página do PDF final conterá exatamente 4 slides originais
         - Economia de até 75% de papel comparado à impressão de 1 slide por página
+        - A margem esquerda de 3cm permite furar o papel sem danificar o conteúdo
         """)
 
 if __name__ == "__main__":
