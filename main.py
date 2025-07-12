@@ -1,3 +1,12 @@
+# [script]
+# dependencies = [
+#     "streamlit>=1.46.1",
+#     "pypdf>=4.2.0",
+#     "Pillow>=10.3.0",
+#     "pdf2image>=1.17.0",
+#     "reportlab>=4.2.0"
+# ]
+
 import streamlit as st
 import tempfile
 import os
