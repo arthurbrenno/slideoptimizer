@@ -41,8 +41,9 @@ PAGE_SIZES = {
 def check_poppler():
     """Verifica se o poppler está instalado e tenta instalar se necessário."""
     try:
-        # Tenta importar pdf2image e usar suas funções
-        pdf2image.get_poppler_version()
+        result = subprocess.run(["pdftoppm", "-h"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if result.returncode != 0:
+            raise Exception("Poppler (pdftoppm) não encontrado")
         return True
     except Exception:
         st.warning("⚠️ Poppler não encontrado. Tentando instalar...")
