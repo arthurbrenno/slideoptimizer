@@ -558,10 +558,20 @@ def create_optimized_pdf_with_groups(groups, all_images_dict, output_path):
             
             # Calcula posições dos slides no grid
             positions = []
+            is_flipped_page = landscape_binder_mode and (global_page_num % 2 == 0)
+
             for row in range(rows):
                 for col in range(cols):
                     x = margin_left + col * (slide_width + spacing)
-                    y = page_height - margin_top - (row + 1) * slide_height - row * spacing
+                    
+                    if is_flipped_page:
+                        # Lógica para páginas PARES (verso): constrói de baixo para cima
+                        # Inverte a ordem das linhas para criar o efeito de espelho vertical
+                        y = margin_bottom + (rows - 1 - row) * slide_height + (rows - 1 - row) * spacing
+                    else:
+                        # Lógica para páginas ÍMPARES (frente): constrói de cima para baixo
+                        y = page_height - margin_top - (row + 1) * slide_height - row * spacing
+                    
                     positions.append((x, y))
             
             # Adiciona slides na página atual
