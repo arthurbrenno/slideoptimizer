@@ -279,7 +279,7 @@ def get_default_config():
     }
 
 # Função para criar preview do layout
-def create_layout_preview(config, selected_count=4):
+def create_layout_preview(config, selected_count=4, page_number=1):
     """Cria uma imagem de preview do layout baseado nas configurações."""
     # Dimensões do preview (proporcionais ao papel real)
     preview_width = 400
@@ -298,6 +298,10 @@ def create_layout_preview(config, selected_count=4):
     # Cria imagem do preview
     img = Image.new('RGB', (preview_width, preview_height), 'white')
     draw = ImageDraw.Draw(img)
+    
+    # Verifica se esta página será rotacionada
+    landscape_binder_mode = st.session_state.get('landscape_binder_mode', False)
+    is_rotated = landscape_binder_mode and (page_number % 2 == 0)
     
     # Calcula margens proporcionais
     scale = preview_width / real_width
@@ -369,8 +373,18 @@ def create_layout_preview(config, selected_count=4):
                     text_x = x + slide_width / 2
                     text_y = y + slide_height / 2
                     
-                    # Desenha o número
-                    draw.text((text_x, text_y), text, fill=text_color, anchor="mm")
+                    # Se estiver rotacionado, adiciona indicador
+                    if is_rotated:
+                        # Rotaciona o texto 180°
+                        rotated_img = Image.new('RGBA', (int(slide_width), int(slide_height)), (255, 255, 255, 0))
+                        rotated_draw = ImageDraw.Draw(rotated_img)
+                        rotated_draw.text((slide_width/2, slide_height/2), text, 
+                                        fill=text_color, anchor="mm")
+                        rotated_img = rotated_img.rotate(180)
+                        img.paste(rotated_img, (int(x), int(y)), rotated_img)
+                    else:
+                        # Desenha o número normalmente
+                        draw.text((text_x, text_y), text, fill=text_color, anchor="mm")
                 
                 slide_num += 1
         
@@ -378,6 +392,11 @@ def create_layout_preview(config, selected_count=4):
         if config.get('footer_text', ''):
             draw.text((margin_left + 5, preview_height - margin_bottom + 5), 
                      config['footer_text'], fill='#333333')
+        
+        # Indicador de rotação se ativo
+        if is_rotated:
+            # Adiciona símbolo de rotação no canto
+            draw.text((preview_width - 50, 10), "🔄 180°", fill='#ff6666')
     else:
         # Se não há espaço suficiente, mostra mensagem
         msg = "Margens muito grandes\npara visualizar"
@@ -424,6 +443,7 @@ def create_optimized_pdf_with_groups(groups, all_images_dict, output_path):
     # Configurações globais
     global_watermark = st.session_state.get('global_watermark', '')
     global_page_numbers = st.session_state.get('global_page_numbers', False)
+    landscape_binder_mode = st.session_state.get('landscape_binder_mode', False)
     
     # Cria o canvas do PDF
     first_group = groups[0]
@@ -485,6 +505,16 @@ def create_optimized_pdf_with_groups(groups, all_images_dict, output_path):
                     c.setPageSize(portrait(page_size))
             else:
                 first_page = False
+            
+            # Verifica se deve rotacionar a página (modo fichário paisagem)
+            should_rotate = landscape_binder_mode and (global_page_num % 2 == 0)
+            
+            if should_rotate:
+                # Salva o estado atual e rotaciona 180°
+                c.saveState()
+                c.translate(page_width/2, page_height/2)
+                c.rotate(180)
+                c.translate(-page_width/2, -page_height/2)
             
             # Adiciona marca d'água global ou do grupo
             watermark = config.get('watermark_text', '') or global_watermark
@@ -632,6 +662,10 @@ def create_optimized_pdf_with_groups(groups, all_images_dict, output_path):
                             c.drawString(x_base + slide_width - 20, y_base + 5, number_text)
                         else:
                             c.drawString(x_base + slide_width/2 - 10, y_base + slide_height/2, number_text)
+            
+            # Restaura o estado se a página foi rotacionada
+            if should_rotate:
+                c.restoreState()
     
     c.save()
 
@@ -1240,7 +1274,8 @@ def main():
                 
                 # Cria o preview com as configurações atuais
                 try:
-                    preview_img = create_layout_preview(current_group['config'], len(current_group['pages']))
+                    # Para o preview, mostra sempre como página ímpar (não rotacionada)
+                    preview_img = create_layout_preview(current_group['config'], len(current_group['pages']), page_number=1)
                     
                     # Cria uma string única baseada nas configurações principais
                     config_str = f"{current_group['config']['grid_cols']}x{current_group['config']['grid_rows']}"
@@ -1251,6 +1286,10 @@ def main():
                     
                     # Mostra o preview
                     st.image(preview_img, use_container_width=True)
+                    
+                    # Se o modo fichário paisagem estiver ativo, mostra aviso
+                    if st.session_state.get('landscape_binder_mode', False):
+                        st.caption("🔄 Modo Fichário Paisagem: páginas pares (verso) serão rotacionadas 180°")
                 except Exception as e:
                     st.error(f"Erro ao criar preview: {str(e)}")
                     st.info("Tente ajustar as configurações ou clique em 🔄 para atualizar")
@@ -1282,29 +1321,40 @@ def main():
                     st.write(f"- Total slides: {total_selected}")
                     st.write(f"- Total páginas: {total_pages_final}")
                     st.write(f"- Economia total: {total_economia:.1f}%")
+                    
+                    # Indicador do modo fichário
+                    if st.session_state.get('landscape_binder_mode', False):
+                        st.info("🔄 Modo Fichário Paisagem ativo: páginas pares serão rotacionadas 180°")
             
             # Configurações globais
             with st.expander("🌐 Configurações Globais", expanded=False):
-                col1, col2, col3 = st.columns(3)
+                col1, col2 = st.columns(2)
                 with col1:
                     st.session_state.global_watermark = st.text_input(
                         "Marca d'água global",
                         value=st.session_state.get('global_watermark', ''),
                         help="Aplica a todos os grupos que não têm marca d'água própria"
                     )
-                with col2:
                     st.session_state.global_page_numbers = st.checkbox(
                         "Numeração global de páginas",
                         value=st.session_state.get('global_page_numbers', False),
                         help="Adiciona número de página no canto inferior direito"
                     )
-                with col3:
                     st.session_state.pdf_dpi = st.selectbox(
                         "Qualidade de conversão (DPI)",
                         options=[100, 150, 200, 300],
                         index=1,
                         help="DPI maior = melhor qualidade mas processamento mais lento"
                     )
+                with col2:
+                    st.session_state.landscape_binder_mode = st.checkbox(
+                        "🔄 Modo Fichário Paisagem",
+                        value=st.session_state.get('landscape_binder_mode', False),
+                        help="Rotaciona páginas pares (verso) em 180° para leitura em fichário paisagem sem precisar girar"
+                    )
+                    if st.session_state.landscape_binder_mode:
+                        st.info("📋 Páginas pares serão rotacionadas 180° para facilitar leitura ao virar a página em fichários paisagem")
+                        st.caption("💡 Use quando o fichário estiver em paisagem na mesa e você virar as páginas 'para cima'")
                 
                 # Configuração avançada do Poppler
                 with st.expander("🔧 Configuração do Poppler (Avançado)", expanded=False):
@@ -1346,6 +1396,10 @@ def main():
                             grid = group['config']['grid_cols'] * group['config']['grid_rows']
                             pages_count = (slides_count + grid - 1) // grid
                             success_msg += f"**{group['name']}**: {slides_count} slides em {pages_count} páginas (grid {group['config']['grid_cols']}x{group['config']['grid_rows']})\n\n"
+                        
+                        # Adiciona nota sobre modo fichário se ativo
+                        if st.session_state.get('landscape_binder_mode', False):
+                            success_msg += "\n🔄 **Modo Fichário Paisagem ativo**: Páginas pares (verso) foram rotacionadas 180° para facilitar leitura em fichários."
                         
                         st.success(success_msg)
                         
