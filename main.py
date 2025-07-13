@@ -299,16 +299,25 @@ def create_layout_preview(config, selected_count=4, page_number=1):
     img = Image.new('RGB', (preview_width, preview_height), 'white')
     draw = ImageDraw.Draw(img)
     
-    # Verifica se esta página será rotacionada
+    # Verifica se as margens devem ser invertidas
     landscape_binder_mode = st.session_state.get('landscape_binder_mode', False)
-    is_rotated = landscape_binder_mode and (page_number % 2 == 0)
+    invert_margins = landscape_binder_mode and (page_number % 2 == 0)
     
     # Calcula margens proporcionais
     scale = preview_width / real_width
-    margin_left = int(config['margin_left'] * scale * 28.35)  # cm para pixels
-    margin_right = int(config['margin_right'] * scale * 28.35)
-    margin_top = int(config['margin_top'] * scale * 28.35)
-    margin_bottom = int(config['margin_bottom'] * scale * 28.35)
+    if invert_margins:
+        # Páginas pares: inverte apenas superior com inferior
+        margin_left = int(config['margin_left'] * scale * 28.35)
+        margin_right = int(config['margin_right'] * scale * 28.35)
+        margin_top = int(config['margin_bottom'] * scale * 28.35)  # Invertido!
+        margin_bottom = int(config['margin_top'] * scale * 28.35)  # Invertido!
+    else:
+        # Páginas ímpares: margens normais
+        margin_left = int(config['margin_left'] * scale * 28.35)
+        margin_right = int(config['margin_right'] * scale * 28.35)
+        margin_top = int(config['margin_top'] * scale * 28.35)
+        margin_bottom = int(config['margin_bottom'] * scale * 28.35)
+    
     spacing = int(config['spacing'] * scale)
     
     # Área útil
@@ -373,18 +382,8 @@ def create_layout_preview(config, selected_count=4, page_number=1):
                     text_x = x + slide_width / 2
                     text_y = y + slide_height / 2
                     
-                    # Se estiver rotacionado, adiciona indicador
-                    if is_rotated:
-                        # Rotaciona o texto 180°
-                        rotated_img = Image.new('RGBA', (int(slide_width), int(slide_height)), (255, 255, 255, 0))
-                        rotated_draw = ImageDraw.Draw(rotated_img)
-                        rotated_draw.text((slide_width/2, slide_height/2), text, 
-                                        fill=text_color, anchor="mm")
-                        rotated_img = rotated_img.rotate(180)
-                        img.paste(rotated_img, (int(x), int(y)), rotated_img)
-                    else:
-                        # Desenha o número normalmente
-                        draw.text((text_x, text_y), text, fill=text_color, anchor="mm")
+                    # Desenha o número normalmente (sem rotação)
+                    draw.text((text_x, text_y), text, fill=text_color, anchor="mm")
                 
                 slide_num += 1
         
@@ -393,10 +392,10 @@ def create_layout_preview(config, selected_count=4, page_number=1):
             draw.text((margin_left + 5, preview_height - margin_bottom + 5), 
                      config['footer_text'], fill='#333333')
         
-        # Indicador de rotação se ativo
-        if is_rotated:
-            # Adiciona símbolo de rotação no canto
-            draw.text((preview_width - 50, 10), "🔄 180°", fill='#ff6666')
+        # Indicador de margens invertidas se ativo
+        if invert_margins:
+            # Adiciona texto indicando inversão
+            draw.text((preview_width - 130, 10), "⇅ Margens sup/inf invertidas", fill='#ff6666')
     else:
         # Se não há espaço suficiente, mostra mensagem
         msg = "Margens muito grandes\npara visualizar"
@@ -481,18 +480,16 @@ def create_optimized_pdf_with_groups(groups, all_images_dict, output_path):
         else:
             page_width, page_height = portrait(page_size)
         
-        margin_left = config['margin_left'] * 28.35
-        margin_right = config['margin_right'] * 28.35
-        margin_top = config['margin_top'] * 28.35
-        margin_bottom = config['margin_bottom'] * 28.35
+        # Margens originais
+        margin_left_original = config['margin_left'] * 28.35
+        margin_right_original = config['margin_right'] * 28.35
+        margin_top_original = config['margin_top'] * 28.35
+        margin_bottom_original = config['margin_bottom'] * 28.35
         spacing = config['spacing']
         
         cols = config['grid_cols']
         rows = config['grid_rows']
         slides_per_page = cols * rows
-        
-        slide_width = (page_width - margin_left - margin_right - (cols - 1) * spacing) / cols
-        slide_height = (page_height - margin_top - margin_bottom - (rows - 1) * spacing) / rows
         
         # Processa as imagens do grupo
         for page_idx in range(0, len(selected_images), slides_per_page):
@@ -506,15 +503,23 @@ def create_optimized_pdf_with_groups(groups, all_images_dict, output_path):
             else:
                 first_page = False
             
-            # Verifica se deve rotacionar a página (modo fichário paisagem)
-            should_rotate = landscape_binder_mode and (global_page_num % 2 == 0)
+            # Verifica se deve inverter as margens (modo fichário paisagem)
+            if landscape_binder_mode and (global_page_num % 2 == 0):
+                # Páginas pares: inverte apenas as margens superior/inferior
+                margin_top = margin_bottom_original
+                margin_bottom = margin_top_original
+                margin_left = margin_left_original
+                margin_right = margin_right_original
+            else:
+                # Páginas ímpares: margens normais
+                margin_top = margin_top_original
+                margin_bottom = margin_bottom_original
+                margin_left = margin_left_original
+                margin_right = margin_right_original
             
-            if should_rotate:
-                # Salva o estado atual e rotaciona 180°
-                c.saveState()
-                c.translate(page_width/2, page_height/2)
-                c.rotate(180)
-                c.translate(-page_width/2, -page_height/2)
+            # Recalcula as dimensões dos slides com as margens ajustadas
+            slide_width = (page_width - margin_left - margin_right - (cols - 1) * spacing) / cols
+            slide_height = (page_height - margin_top - margin_bottom - (rows - 1) * spacing) / rows
             
             # Adiciona marca d'água global ou do grupo
             watermark = config.get('watermark_text', '') or global_watermark
@@ -662,10 +667,6 @@ def create_optimized_pdf_with_groups(groups, all_images_dict, output_path):
                             c.drawString(x_base + slide_width - 20, y_base + 5, number_text)
                         else:
                             c.drawString(x_base + slide_width/2 - 10, y_base + slide_height/2, number_text)
-            
-            # Restaura o estado se a página foi rotacionada
-            if should_rotate:
-                c.restoreState()
     
     c.save()
 
@@ -1265,17 +1266,23 @@ def main():
                 st.markdown("### 👁️ Preview do Layout")
                 
                 # Cabeçalho com nome do grupo e botão de atualizar
-                col_title, col_refresh = st.columns([3, 1])
+                col_title, col_page, col_refresh = st.columns([2, 1, 1])
                 with col_title:
                     st.markdown(f"**{current_group['name']}**")
+                with col_page:
+                    # Só mostra seletor de página se modo fichário estiver ativo
+                    if st.session_state.get('landscape_binder_mode', False):
+                        preview_page = st.radio("Página", ["Ímpar", "Par"], horizontal=True, key="preview_page")
+                        page_number = 1 if preview_page == "Ímpar" else 2
+                    else:
+                        page_number = 1
                 with col_refresh:
                     if st.button("🔄", help="Atualizar preview"):
                         st.rerun()
                 
                 # Cria o preview com as configurações atuais
                 try:
-                    # Para o preview, mostra sempre como página ímpar (não rotacionada)
-                    preview_img = create_layout_preview(current_group['config'], len(current_group['pages']), page_number=1)
+                    preview_img = create_layout_preview(current_group['config'], len(current_group['pages']), page_number)
                     
                     # Cria uma string única baseada nas configurações principais
                     config_str = f"{current_group['config']['grid_cols']}x{current_group['config']['grid_rows']}"
@@ -1283,13 +1290,17 @@ def main():
                     config_str += f"_{current_group['config']['margin_left']}_{current_group['config']['margin_right']}"
                     config_str += f"_{current_group['config']['margin_top']}_{current_group['config']['margin_bottom']}"
                     config_str += f"_{current_group['config']['spacing']}_{current_group['config']['show_borders']}"
+                    config_str += f"_{page_number}"
                     
                     # Mostra o preview
                     st.image(preview_img, use_container_width=True)
                     
                     # Se o modo fichário paisagem estiver ativo, mostra aviso
                     if st.session_state.get('landscape_binder_mode', False):
-                        st.caption("🔄 Modo Fichário Paisagem: páginas pares (verso) serão rotacionadas 180°")
+                        if page_number == 2:
+                            st.caption("🔄 Visualizando página par (verso) com margens invertidas")
+                        else:
+                            st.caption("📄 Visualizando página ímpar (frente) com margens normais")
                 except Exception as e:
                     st.error(f"Erro ao criar preview: {str(e)}")
                     st.info("Tente ajustar as configurações ou clique em 🔄 para atualizar")
@@ -1324,7 +1335,7 @@ def main():
                     
                     # Indicador do modo fichário
                     if st.session_state.get('landscape_binder_mode', False):
-                        st.info("🔄 Modo Fichário Paisagem ativo: páginas pares serão rotacionadas 180°")
+                        st.info("🔄 Modo Fichário Paisagem ativo: margens superior/inferior serão invertidas nas páginas pares")
             
             # Configurações globais
             with st.expander("🌐 Configurações Globais", expanded=False):
@@ -1350,11 +1361,11 @@ def main():
                     st.session_state.landscape_binder_mode = st.checkbox(
                         "🔄 Modo Fichário Paisagem",
                         value=st.session_state.get('landscape_binder_mode', False),
-                        help="Rotaciona páginas pares (verso) em 180° para leitura em fichário paisagem sem precisar girar"
+                        help="Inverte margens superior/inferior nas páginas pares (verso) para leitura natural em fichário paisagem"
                     )
                     if st.session_state.landscape_binder_mode:
-                        st.info("📋 Páginas pares serão rotacionadas 180° para facilitar leitura ao virar a página em fichários paisagem")
-                        st.caption("💡 Use quando o fichário estiver em paisagem na mesa e você virar as páginas 'para cima'")
+                        st.info("📋 Margens superior e inferior serão invertidas nas páginas pares (verso)")
+                        st.caption("💡 Mantém o conteúdo alinhado ao virar páginas 'para cima' no fichário paisagem")
                 
                 # Configuração avançada do Poppler
                 with st.expander("🔧 Configuração do Poppler (Avançado)", expanded=False):
@@ -1399,7 +1410,7 @@ def main():
                         
                         # Adiciona nota sobre modo fichário se ativo
                         if st.session_state.get('landscape_binder_mode', False):
-                            success_msg += "\n🔄 **Modo Fichário Paisagem ativo**: Páginas pares (verso) foram rotacionadas 180° para facilitar leitura em fichários."
+                            success_msg += "\n🔄 **Modo Fichário Paisagem ativo**: Margens superior/inferior foram invertidas nas páginas pares (verso) para manter alinhamento visual."
                         
                         st.success(success_msg)
                         
