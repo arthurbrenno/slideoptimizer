@@ -301,16 +301,24 @@ def create_layout_preview(config, selected_count=4, page_number=1):
     
     # Verifica se as margens devem ser invertidas
     landscape_binder_mode = st.session_state.get('landscape_binder_mode', False)
-    invert_margins = landscape_binder_mode and (page_number % 2 == 0)
+    portrait_binder_mode = st.session_state.get('portrait_binder_mode', False)
+    invert_margins_tb = landscape_binder_mode and (page_number % 2 == 0)
+    invert_margins_lr = portrait_binder_mode and (page_number % 2 == 0)
     
     # Calcula margens proporcionais
     scale = preview_width / real_width
-    if invert_margins:
-        # Páginas pares: inverte apenas superior com inferior
+    if invert_margins_tb:
+        # Modo fichário paisagem - páginas pares: inverte apenas superior com inferior
         margin_left = int(config['margin_left'] * scale * 28.35)
         margin_right = int(config['margin_right'] * scale * 28.35)
         margin_top = int(config['margin_bottom'] * scale * 28.35)  # Invertido!
         margin_bottom = int(config['margin_top'] * scale * 28.35)  # Invertido!
+    elif invert_margins_lr:
+        # Modo fichário retrato - páginas pares: inverte apenas esquerda com direita
+        margin_left = int(config['margin_right'] * scale * 28.35)  # Invertido!
+        margin_right = int(config['margin_left'] * scale * 28.35)  # Invertido!
+        margin_top = int(config['margin_top'] * scale * 28.35)
+        margin_bottom = int(config['margin_bottom'] * scale * 28.35)
     else:
         # Páginas ímpares: margens normais
         margin_left = int(config['margin_left'] * scale * 28.35)
@@ -393,9 +401,12 @@ def create_layout_preview(config, selected_count=4, page_number=1):
                      config['footer_text'], fill='#333333')
         
         # Indicador de margens invertidas se ativo
-        if invert_margins:
-            # Adiciona texto indicando inversão
+        if invert_margins_tb:
+            # Adiciona texto indicando inversão superior/inferior
             draw.text((preview_width - 130, 10), "⇅ Margens sup/inf invertidas", fill='#ff6666')
+        elif invert_margins_lr:
+            # Adiciona texto indicando inversão esquerda/direita
+            draw.text((preview_width - 130, 10), "⇄ Margens esq/dir invertidas", fill='#6666ff')
     else:
         # Se não há espaço suficiente, mostra mensagem
         msg = "Margens muito grandes\npara visualizar"
@@ -443,6 +454,7 @@ def create_optimized_pdf_with_groups(groups, all_images_dict, output_path):
     global_watermark = st.session_state.get('global_watermark', '')
     global_page_numbers = st.session_state.get('global_page_numbers', False)
     landscape_binder_mode = st.session_state.get('landscape_binder_mode', False)
+    portrait_binder_mode = st.session_state.get('portrait_binder_mode', False)
     
     # Cria o canvas do PDF
     first_group = groups[0]
@@ -503,13 +515,19 @@ def create_optimized_pdf_with_groups(groups, all_images_dict, output_path):
             else:
                 first_page = False
             
-            # Verifica se deve inverter as margens (modo fichário paisagem)
+            # Verifica se deve inverter as margens
             if landscape_binder_mode and (global_page_num % 2 == 0):
-                # Páginas pares: inverte apenas as margens superior/inferior
+                # Modo fichário paisagem - páginas pares: inverte apenas as margens superior/inferior
                 margin_top = margin_bottom_original
                 margin_bottom = margin_top_original
                 margin_left = margin_left_original
                 margin_right = margin_right_original
+            elif portrait_binder_mode and (global_page_num % 2 == 0):
+                # Modo fichário retrato - páginas pares: inverte apenas as margens esquerda/direita
+                margin_left = margin_right_original
+                margin_right = margin_left_original
+                margin_top = margin_top_original
+                margin_bottom = margin_bottom_original
             else:
                 # Páginas ímpares: margens normais
                 margin_top = margin_top_original
@@ -1280,8 +1298,8 @@ def main():
                 with col_title:
                     st.markdown(f"**{current_group['name']}**")
                 with col_page:
-                    # Só mostra seletor de página se modo fichário estiver ativo
-                    if st.session_state.get('landscape_binder_mode', False):
+                    # Só mostra seletor de página se algum modo fichário estiver ativo
+                    if st.session_state.get('landscape_binder_mode', False) or st.session_state.get('portrait_binder_mode', False):
                         preview_page = st.radio("Página", ["Ímpar", "Par"], horizontal=True, key="preview_page")
                         page_number = 1 if preview_page == "Ímpar" else 2
                     else:
@@ -1305,10 +1323,15 @@ def main():
                     # Mostra o preview
                     st.image(preview_img, use_container_width=True)
                     
-                    # Se o modo fichário paisagem estiver ativo, mostra aviso
+                    # Se algum modo fichário estiver ativo, mostra aviso
                     if st.session_state.get('landscape_binder_mode', False):
                         if page_number == 2:
-                            st.caption("🔄 Visualizando página par (verso) com margens invertidas")
+                            st.caption("🔄 Visualizando página par (verso) com margens sup/inf invertidas")
+                        else:
+                            st.caption("📄 Visualizando página ímpar (frente) com margens normais")
+                    elif st.session_state.get('portrait_binder_mode', False):
+                        if page_number == 2:
+                            st.caption("🔄 Visualizando página par (verso) com margens esq/dir invertidas")
                         else:
                             st.caption("📄 Visualizando página ímpar (frente) com margens normais")
                 except Exception as e:
@@ -1346,6 +1369,8 @@ def main():
                     # Indicador do modo fichário
                     if st.session_state.get('landscape_binder_mode', False):
                         st.info("🔄 Modo Fichário Paisagem ativo: margens superior/inferior serão invertidas nas páginas pares")
+                    elif st.session_state.get('portrait_binder_mode', False):
+                        st.info("🔄 Modo Fichário Retrato ativo: margens esquerda/direita serão invertidas nas páginas pares")
             
             # Configurações globais
             with st.expander("🌐 Configurações Globais", expanded=False):
@@ -1368,14 +1393,49 @@ def main():
                         help="DPI maior = melhor qualidade mas processamento mais lento"
                     )
                 with col2:
-                    st.session_state.landscape_binder_mode = st.checkbox(
+                    st.markdown("**Modos de Fichário**")
+                    # Torna os modos mutuamente exclusivos
+                    landscape_mode = st.checkbox(
                         "🔄 Modo Fichário Paisagem",
                         value=st.session_state.get('landscape_binder_mode', False),
-                        help="Inverte margens superior/inferior nas páginas pares (verso) para leitura natural em fichário paisagem"
+                        help="Inverte margens superior/inferior nas páginas pares (verso) para leitura natural em fichário paisagem",
+                        key="landscape_mode_checkbox"
                     )
+                    portrait_mode = st.checkbox(
+                        "↔️ Modo Fichário Retrato",
+                        value=st.session_state.get('portrait_binder_mode', False),
+                        help="Inverte margens esquerda/direita nas páginas pares (verso) para leitura natural em fichário retrato",
+                        key="portrait_mode_checkbox"
+                    )
+                    
+                    # Garante que apenas um modo esteja ativo por vez
+                    if landscape_mode and portrait_mode:
+                        st.warning("⚠️ Apenas um modo fichário pode estar ativo por vez!")
+                        # Desativa o modo que foi ativado por último
+                        if 'last_binder_mode' in st.session_state:
+                            if st.session_state.last_binder_mode == 'landscape':
+                                st.session_state.portrait_binder_mode = True
+                                st.session_state.landscape_binder_mode = False
+                            else:
+                                st.session_state.landscape_binder_mode = True
+                                st.session_state.portrait_binder_mode = False
+                        else:
+                            st.session_state.landscape_binder_mode = True
+                            st.session_state.portrait_binder_mode = False
+                    else:
+                        st.session_state.landscape_binder_mode = landscape_mode
+                        st.session_state.portrait_binder_mode = portrait_mode
+                        if landscape_mode:
+                            st.session_state.last_binder_mode = 'landscape'
+                        elif portrait_mode:
+                            st.session_state.last_binder_mode = 'portrait'
+                    
                     if st.session_state.landscape_binder_mode:
                         st.info("📋 Margens superior e inferior serão invertidas nas páginas pares (verso)")
                         st.caption("💡 Mantém o conteúdo alinhado ao virar páginas 'para cima' no fichário paisagem")
+                    elif st.session_state.portrait_binder_mode:
+                        st.info("📋 Margens esquerda e direita serão invertidas nas páginas pares (verso)")
+                        st.caption("💡 Mantém o conteúdo alinhado ao virar páginas lateralmente no fichário retrato")
                 
                 # Configuração avançada do Poppler
                 with st.expander("🔧 Configuração do Poppler (Avançado)", expanded=False):
@@ -1421,6 +1481,8 @@ def main():
                         # Adiciona nota sobre modo fichário se ativo
                         if st.session_state.get('landscape_binder_mode', False):
                             success_msg += "\n🔄 **Modo Fichário Paisagem ativo**: Margens superior/inferior foram invertidas nas páginas pares (verso) para manter alinhamento visual."
+                        elif st.session_state.get('portrait_binder_mode', False):
+                            success_msg += "\n↔️ **Modo Fichário Retrato ativo**: Margens esquerda/direita foram invertidas nas páginas pares (verso) para manter alinhamento visual."
                         
                         st.success(success_msg)
                         
@@ -1466,6 +1528,12 @@ def main():
         - Cabeçalho e rodapé personalizados
         - Numeração global de páginas
         - Variáveis: {page}, {date}, {group}
+        
+        #### 🔀 **Modos de Fichário**
+        - **Modo Fichário Paisagem**: Inverte margens superior/inferior nas páginas pares para leitura natural ao virar páginas "para cima"
+        - **Modo Fichário Retrato**: Inverte margens esquerda/direita nas páginas pares para leitura natural ao virar páginas lateralmente
+        - Apenas um modo pode estar ativo por vez
+        - Ideal para impressão frente e verso em fichários
         
         #### 🔀 **Modos de Ordenação**
         - **PDF → Página**: Agrupa por arquivo
